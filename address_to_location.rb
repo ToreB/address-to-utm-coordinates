@@ -1,3 +1,6 @@
+# Script that uses the Google Maps Geocoding API to get the lat long coordinates of addresses,
+# then converts them to UTM coordinates.
+#
 # Script usage:
 # ruby address_to_location.rb <api_key> <input_csv_file> <output_csv_file>
 # Arguments:
@@ -9,17 +12,16 @@
 #     "some address";"NO";1
 #     "another address";"NO";2
 #  3. output_csv_file: the path to the output file. Will have the following format:
-#     ADDRESS;COUNTRY;UTM_NORTH;UTM_EAST;UTM_ZONE;[; semi colon separated list of optional columns]
+#     ADDRESS;COUNTRY[; semi colon separated list of optional columns];UTM_EAST;UTM_NORTH;UTM_ZONE
 #     Example:
-#     ADDRESS;COUNTRY;UTM_NORTH;UTM_EAST;UTM_ZONE;SOME_IDENTIFIER
-#     "some address";"NO";1234.123;2345.2345;"32V";1
-#     "another address";"NO";2345.123;3456,2345;"32V";2
+#     ADDRESS;COUNTRY;SOME_IDENTIFIER;UTM_EAST;UTM_NORTH;UTM_ZONE
+#     "some address";"NO";1;1234.123;2345.2345;"32V"
+#     "another address";"NO";2;2345.123;3456,2345;"32V"
 
 require 'bundler/setup'
 require 'net/http'
 require 'json'
 require 'cgi'
-require 'pp' # TODO: remove
 # Loads third party gems with Bundler
 Bundler.require(:default)
 
@@ -37,7 +39,11 @@ OUTPUT_FILE_PATH = ARGV[2]
 DELIMITER = ';'
 ADDRESS_KEY = "address"
 COUNTRY_KEY = "country"
+REQUEST_KEY = "request"
 
+UTM_NORTH = "UTM_NORTH"
+UTM_EAST = "UTM_EAST"
+UTM_ZONE = "UTM_ZONE"
 
 # Check if input file exists
 unless File.exist? INPUT_FILE_PATH
@@ -58,7 +64,7 @@ input_file.each do |line|
    values = line.split(DELIMITER)
    column_values = {}
    headers.each_with_index do |header, index|
-      column_values[header] = values[index].strip.gsub(/"/, '')
+      column_values[header] = values[index].strip
    end
 
    file_contents[input_file.lineno - 1] = column_values
@@ -66,27 +72,71 @@ end
 
 input_file.close
 
-pp file_contents # TODO: remove
-
 # Creates the requests
 base_url = "https://maps.googleapis.com/maps/api/geocode/json"
-requests = []
 file_contents.each do |key, value|
-   parameters = "#{ADDRESS_KEY}=#{CGI.escape(value[ADDRESS_KEY])}&components=country:#{CGI.escape(value[COUNTRY_KEY])}&key=#{API_KEY}"
-   requests.push("#{base_url}?#{parameters}")
+   escaped_address = CGI.escape(value[ADDRESS_KEY].gsub(/"/, ''))
+   escaped_country = CGI.escape(value[COUNTRY_KEY].gsub(/"/, ''))
+   parameters = "#{ADDRESS_KEY}=#{escaped_address}&components=country:#{escaped_country}&key=#{API_KEY}"
+   request = "#{base_url}?#{parameters}"
+   value[REQUEST_KEY] = request
 end
 
-pp requests # TODO: remove
+def handle_status?(request, status, error_message)
+   should_continue = true
+
+   error_string = "Error: #{error_message.nil? ? 'N/A' : error_message}"
+   case status
+      when 'ZERO_RESULTS'
+         puts "No results for request #{request}."
+      when 'OVER_QUERY_LIMIT'
+         # over query limit for the day
+         puts "Query limit reached. Exiting."
+         should_continue = false
+      when 'REQUEST_DENIED'
+         puts "Request #{request} was denied. Error: #{error_string}"
+      when 'INVALID_REQUEST'
+         puts "Request #{request} is invalid. Error: #{error_string}"
+      when 'UNKNOWN_ERROR'
+         puts "Unknown error occured for request #{request}. Error: #{error_string}"
+   end
+
+   return should_continue
+end
 
 # Opens or creates output file for writing
 output_file = File.new(OUTPUT_FILE_PATH, 'w')
 
-requests.each_with_index do |request, index|
+# writes header
+output_file.puts("#{headers.join(DELIMITER)}#{DELIMITER}#{UTM_EAST}#{DELIMITER}#{UTM_NORTH}#{DELIMITER}#{UTM_ZONE}".upcase)
+
+# performs http requests and writes result to file
+file_contents.each_with_index do |(key, value), index|
    # sleeps 1 second every 50 requests, due to usage limit in the Google Maps Geocoding API
    sleep(1) if (index + 1) % 50 == 0
 
-   response = HTTP.get(URI(request))
+   request = value[REQUEST_KEY]
+   response = Net::HTTP.get(URI(request))
    json_result = JSON.parse(response)
+
+   status = json_result["status"]
+   error_message = json_result["error_message"]
+   unless status == 'OK'
+      handle_status?(request, status, error_message) ? next : break
+   end
+
+   # gets the relevant info from the results
+   latitude = json_result["results"][0]["geometry"]["location"]["lat"]
+   longitude = json_result["results"][0]["geometry"]["location"]["lng"]
+   utm_coordinate = GeoUtm::LatLon.new(latitude, longitude).to_utm
+
+   out_line = ""
+   headers.each do |header|
+      out_line << "#{value[header]}#{DELIMITER}"
+   end
+
+   out_line << "#{utm_coordinate.e}#{DELIMITER}#{utm_coordinate.n}#{DELIMITER}\"#{utm_coordinate.zone}\""
+   output_file.puts(out_line)
 end
 
 output_file.close
