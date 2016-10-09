@@ -1,13 +1,18 @@
+GIT
+  remote: https://github.com/zydeco/geoutm
+  revision: 1d748f6e8679125a25c5ed6c34960f509d2bef8b
+  specs:
+    geoutm (1.0.3)
+
 GEM
   remote: https://rubygems.org/
   specs:
-    geoutm (1.0.2)
 
 PLATFORMS
   ruby
 
 DEPENDENCIES
-  geoutm
+  geoutm!
 
 BUNDLED WITH
    1.13.2
