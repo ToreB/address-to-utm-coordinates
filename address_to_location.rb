@@ -6,13 +6,13 @@
 # Arguments:
 #  1. api_key: Google Maps Geocoding API key
 #  2. input_csv_file: expects the path to a csv file with the following format:
-#     ADDRESS;COUNTRY[; semi colon separated list of optional columns].
+#     ADDRESS;COUNTRY[; semicolon separated list of optional columns]
 #     Example
 #     ADDRESS;COUNTRY;SOME_IDENTIFIER
 #     "some address";"NO";1
 #     "another address";"NO";2
 #  3. output_csv_file: the path to the output file. Will have the following format:
-#     ADDRESS;COUNTRY[; semi colon separated list of optional columns];UTM_EAST;UTM_NORTH;UTM_ZONE
+#     ADDRESS;COUNTRY[; semicolon separated list of optional columns];UTM_EAST;UTM_NORTH;UTM_ZONE
 #     Example:
 #     ADDRESS;COUNTRY;SOME_IDENTIFIER;UTM_EAST;UTM_NORTH;UTM_ZONE
 #     "some address";"NO";1;1234.123;2345.2345;"32V"
