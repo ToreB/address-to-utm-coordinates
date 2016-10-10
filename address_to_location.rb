@@ -94,11 +94,11 @@ def handle_status?(request, status, error_message)
          puts "Query limit reached. Exiting."
          should_continue = false
       when 'REQUEST_DENIED'
-         puts "Request #{request} was denied. Error: #{error_string}"
+         puts "Request #{request} was denied. #{error_string}"
       when 'INVALID_REQUEST'
-         puts "Request #{request} is invalid. Error: #{error_string}"
+         puts "Request #{request} is invalid. #{error_string}"
       when 'UNKNOWN_ERROR'
-         puts "Unknown error occured for request #{request}. Error: #{error_string}"
+         puts "Unknown error occured for request #{request}. #{error_string}"
    end
 
    return should_continue
@@ -111,10 +111,7 @@ output_file = File.new(OUTPUT_FILE_PATH, 'w')
 output_file.puts("#{headers.join(DELIMITER)}#{DELIMITER}#{UTM_EAST}#{DELIMITER}#{UTM_NORTH}#{DELIMITER}#{UTM_ZONE}".upcase)
 
 # performs http requests and writes result to file
-file_contents.each_with_index do |(key, value), index|
-   # sleeps 1 second every 50 requests, due to usage limit in the Google Maps Geocoding API
-   sleep(1) if (index + 1) % 50 == 0
-
+file_contents.each do |key, value|
    request = value[REQUEST_KEY]
    response = Net::HTTP.get(URI(request))
    json_result = JSON.parse(response)
