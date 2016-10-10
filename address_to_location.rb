@@ -6,8 +6,10 @@
 # Arguments:
 #  1. api_key: Google Maps Geocoding API key
 #  2. input_csv_file: expects the path to a csv file with the following format:
-#     ADDRESS;COUNTRY[; semicolon separated list of optional columns]
-#     Example
+#     ADDRESS;COUNTRY[;UTM_ZONE][; semicolon separated list of optional columns]
+#     UTM_ZONE, if specified, can be used to force the coordinates into another UTM zone than it belongs to.
+#     Optional columns can be whatever you want. They will just be written to the output file as extra info.
+#     Example:
 #     ADDRESS;COUNTRY;SOME_IDENTIFIER
 #     "some address";"NO";1
 #     "another address";"NO";2
@@ -39,11 +41,11 @@ OUTPUT_FILE_PATH = ARGV[2]
 DELIMITER = ';'
 ADDRESS_KEY = "address"
 COUNTRY_KEY = "country"
+UTM_ZONE_KEY = "utm_zone"
 REQUEST_KEY = "request"
 
 UTM_NORTH = "UTM_NORTH"
 UTM_EAST = "UTM_EAST"
-UTM_ZONE = "UTM_ZONE"
 
 # Check if input file exists
 unless File.exist? INPUT_FILE_PATH
@@ -70,6 +72,7 @@ input_file.each do |line|
    file_contents[input_file.lineno - 1] = column_values
 end
 
+# close input file
 input_file.close
 
 # Creates the requests
@@ -82,6 +85,7 @@ file_contents.each do |key, value|
    value[REQUEST_KEY] = request
 end
 
+# Method for handling the response status
 def handle_status?(request, status, error_message)
    should_continue = true
 
@@ -108,7 +112,8 @@ end
 output_file = File.new(OUTPUT_FILE_PATH, 'w')
 
 # writes header
-output_file.puts("#{headers.join(DELIMITER)}#{DELIMITER}#{UTM_EAST}#{DELIMITER}#{UTM_NORTH}#{DELIMITER}#{UTM_ZONE}".upcase)
+headers_without_utm_zone = headers.reject {|element| element == UTM_ZONE_KEY}
+output_file.puts("#{headers_without_utm_zone.join(DELIMITER)}#{DELIMITER}#{UTM_EAST}#{DELIMITER}#{UTM_NORTH}#{DELIMITER}#{UTM_ZONE_KEY}".upcase)
 
 # performs http requests and writes result to file
 file_contents.each do |key, value|
@@ -122,13 +127,22 @@ file_contents.each do |key, value|
       handle_status?(request, status, error_message) ? next : break
    end
 
+   num_results = json_result["results"].length;
+   puts "Request #{request} returned #{num_results}. Choosing first result." if num_results > 1
+
    # gets the relevant info from the results
    latitude = json_result["results"][0]["geometry"]["location"]["lat"]
    longitude = json_result["results"][0]["geometry"]["location"]["lng"]
-   utm_coordinate = GeoUtm::LatLon.new(latitude, longitude).to_utm
 
+   # gets the user defined utm zone for the row, if it exists
+   forced_zone = value[UTM_ZONE_KEY]
+   forced_zone = forced_zone.nil? || forced_zone == '' ? nil : forced_zone.gsub(/"/, '')
+   # converts the lat long coordinate to utm, in the specified zone
+   utm_coordinate = GeoUtm::LatLon.new(latitude, longitude).to_utm(:zone => forced_zone)
+
+   # constructs the output and writes to file
    out_line = ""
-   headers.each do |header|
+   headers_without_utm_zone.each do |header|
       out_line << "#{value[header]}#{DELIMITER}"
    end
 
@@ -136,4 +150,5 @@ file_contents.each do |key, value|
    output_file.puts(out_line)
 end
 
+# close output file
 output_file.close
