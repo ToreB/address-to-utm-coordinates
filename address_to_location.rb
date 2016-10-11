@@ -11,14 +11,14 @@
 #     Optional columns can be whatever you want. They will just be written to the output file as extra info.
 #     Example:
 #     ADDRESS;COUNTRY;SOME_IDENTIFIER
-#     "some address";"NO";1
-#     "another address";"NO";2
+#     some address;NO;1
+#     another address;NO;2
 #  3. output_csv_file: the path to the output file. Will have the following format:
 #     ADDRESS;COUNTRY[; semicolon separated list of optional columns];UTM_EAST;UTM_NORTH;UTM_ZONE
 #     Example:
 #     ADDRESS;COUNTRY;SOME_IDENTIFIER;UTM_EAST;UTM_NORTH;UTM_ZONE
-#     "some address";"NO";1;1234.123;2345.2345;"32V"
-#     "another address";"NO";2;2345.123;3456,2345;"32V"
+#     some address;NO;1;1234.123;2345.2345;32V
+#     another address;NO;2;2345.123;3456,2345;32V
 
 require 'bundler/setup'
 require 'net/http'
@@ -127,18 +127,23 @@ file_contents.each do |key, value|
       handle_status?(request, status, error_message) ? next : break
    end
 
-   num_results = json_result["results"].length;
-   puts "Request #{request} returned #{num_results}. Choosing first result." if num_results > 1
+   num_results = json_result["results"] ? json_result["results"].length : 0;
+   puts "Request #{request} returned #{num_results} results. Choosing first result." if num_results > 1
 
-   # gets the relevant info from the results
-   latitude = json_result["results"][0]["geometry"]["location"]["lat"]
-   longitude = json_result["results"][0]["geometry"]["location"]["lng"]
+   utm_coordinate = nil
+   if num_results > 0
+       # gets the relevant info from the results
+       latitude = json_result["results"][0]["geometry"]["location"]["lat"]
+       longitude = json_result["results"][0]["geometry"]["location"]["lng"]
 
-   # gets the user defined utm zone for the row, if it exists
-   forced_zone = value[UTM_ZONE_KEY]
-   forced_zone = forced_zone.nil? || forced_zone == '' ? nil : forced_zone.gsub(/"/, '')
-   # converts the lat long coordinate to utm, in the specified zone
-   utm_coordinate = GeoUtm::LatLon.new(latitude, longitude).to_utm(:zone => forced_zone)
+       unless latitude.nil? || longitude.nil?
+           # gets the user defined utm zone for the row, if it exists
+           forced_zone = value[UTM_ZONE_KEY]
+           forced_zone = forced_zone.nil? || forced_zone == '' ? nil : forced_zone.gsub(/"/, '')
+           # converts the lat long coordinate to utm, in the specified zone
+           utm_coordinate = GeoUtm::LatLon.new(latitude, longitude).to_utm(:zone => forced_zone)
+       end
+   end
 
    # constructs the output and writes to file
    out_line = ""
@@ -146,7 +151,10 @@ file_contents.each do |key, value|
       out_line << "#{value[header]}#{DELIMITER}"
    end
 
-   out_line << "#{utm_coordinate.e}#{DELIMITER}#{utm_coordinate.n}#{DELIMITER}\"#{utm_coordinate.zone}\""
+   utm_east = utm_coordinate.nil? ? nil : utm_coordinate.e
+   utm_north = utm_coordinate.nil? ? nil : utm_coordinate.n
+   utm_zone = utm_coordinate.nil? ? nil : utm_coordinate.zone
+   out_line << "#{utm_east}#{DELIMITER}#{utm_north}#{DELIMITER}#{utm_zone}"
    output_file.puts(out_line)
 end
 
