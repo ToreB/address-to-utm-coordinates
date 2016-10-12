@@ -64,6 +64,8 @@ file_contents = {}
 # reads the rest of the file
 input_file.each do |line|
    values = line.split(DELIMITER)
+   next if values.empty?
+
    column_values = {}
    headers.each_with_index do |header, index|
       column_values[header] = values[index].strip
